@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <cstdlib>
 #include <chrono>
 #include <thread>
@@ -12,7 +13,7 @@
 #define GRAPHITE_PORT 2003
 
 void post_metric(const std::string& machine_id, const std::string& sensor_id, const std::string& timestamp_str, const int value) {
-
+    
 }
 
 std::vector<std::string> split(const std::string &str, char delim) {
