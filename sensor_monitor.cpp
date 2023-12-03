@@ -15,25 +15,27 @@
 #define BROKER_ADDRESS "tcp://localhost:1883"
 #define MONITOR_TOPIC "/sensor_monitors"
 
+using namespace std;
+
 // Estrutura para armazenar informações do sensor
 struct Sensor
 {
-    std::string sensor_id;
-    std::string data_type;
+    string sensor_id;
+    string data_type;
     long data_interval; // em milissegundos
 };
 
-// Função para obter a RAM usada
-long getUsedRAM()
+// Função para obter a RAM usada, em MB
+int getUsedRAM()
 {
     struct sysinfo info;
     if (sysinfo(&info) != 0)
     {
-        std::cerr << "Erro ao obter informações do sistema" << std::endl;
+        cerr << "error getting system information" << endl;
         return -1;
     }
     // Calcula a RAM usada (RAM total - RAM livre)
-    double usedRAMInMB = static_cast<double>(info.totalram - info.freeram) / (1024 * 1024);
+    int usedRAMInMB = (info.totalram - info.freeram) / (1024 * 1024);
     return usedRAMInMB;
 }
 
@@ -43,18 +45,18 @@ int getRunningProcesses()
     struct sysinfo info;
     if (sysinfo(&info) != 0)
     {
-        std::cerr << "Erro ao obter informações do sistema" << std::endl;
+        cerr << "error getting system information" << endl;
         return -1;
     }
     return info.procs;
 }
 
 // Função para publicar a mensagem inicial
-void publishInitialMessage(const std::string &machineId, const std::vector<Sensor> &sensors, mqtt::client &client)
+void publishInitialMessage(const string &machineId, const vector<Sensor> &sensors, mqtt::client &client)
 {
     nlohmann::json initialMessage;
     initialMessage["machine_id"] = machineId;
-    std::vector<nlohmann::json> sensorsJson;
+    vector<nlohmann::json> sensorsJson;
     for (const auto &sensor : sensors)
     {
         nlohmann::json sensorJson;
@@ -66,28 +68,28 @@ void publishInitialMessage(const std::string &machineId, const std::vector<Senso
     initialMessage["sensors"] = sensorsJson;
     mqtt::message msg(MONITOR_TOPIC, initialMessage.dump(), QOS, false);
     client.publish(msg);
-    std::clog << "Mensagem inicial publicada - tópico: " << MONITOR_TOPIC << " - mensagem: " << initialMessage.dump() << std::endl;
+    clog << "initial message published - topic: " << MONITOR_TOPIC << " - message: " << initialMessage.dump() << endl;
 }
 
 // Função para publicar mensagens periodicamente
-void publishMessagesPeriodically(const std::string &machineId, const std::vector<Sensor> &sensors, mqtt::client &client, int interval)
+void publishInitialMessagePeriodically(const string &machineId, const vector<Sensor> &sensors, mqtt::client &client, int interval)
 {
     while (true)
     {
         // Publica a mensagem inicial
         publishInitialMessage(machineId, sensors, client);
         // Dorme pelo intervalo especificado
-        std::this_thread::sleep_for(std::chrono::seconds(interval));
+        this_thread::sleep_for(chrono::seconds(interval));
     }
 }
 
 // Função para ler e publicar dados do sensor
-void readAndPublishSensor(const std::string &machineId, const Sensor &sensor, mqtt::client &client)
+void readAndPublishSensor(const string &machineId, const Sensor &sensor, mqtt::client &client)
 {
-    std::string topic = "/sensors/" + machineId + "/" + sensor.sensor_id;
+    string topic = "/sensors/" + machineId + "/" + sensor.sensor_id;
     while (true)
     {
-        double value;
+        int value;
         // Escolhe a função apropriada com base no tipo de sensor
         if (sensor.sensor_id == "used_memory")
         {
@@ -99,28 +101,33 @@ void readAndPublishSensor(const std::string &machineId, const Sensor &sensor, mq
         }
         else
         {
-            std::cerr << "Tipo de sensor desconhecido: " << sensor.sensor_id << std::endl;
+            cerr << "unknown sensor: " << sensor.sensor_id << endl;
             continue;
         }
-        auto now = std::chrono::system_clock::now();
-        std::time_t now_c = std::chrono::system_clock::to_time_t(now);
-        std::tm *now_tm = std::localtime(&now_c);
-        std::stringstream ss;
-        ss << std::put_time(now_tm, "%FT%TZ");
-        std::string timestamp = ss.str();
+        auto now = chrono::system_clock::now();
+        time_t now_c = chrono::system_clock::to_time_t(now);
+        tm *now_tm = localtime(&now_c);
+        stringstream ss;
+        ss << put_time(now_tm, "%FT%TZ");
+        string timestamp = ss.str();
         nlohmann::json sensorData;
         sensorData["timestamp"] = timestamp;
         sensorData["value"] = value;
         mqtt::message msg(topic, sensorData.dump(), QOS, false);
         client.publish(msg);
-        std::clog << "Mensagem publicada - tópico: " << topic << " - mensagem: " << sensorData.dump() << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(sensor.data_interval));
+        clog << "message published - topic: " << topic << " - message: " << sensorData.dump() << endl;
+        this_thread::sleep_for(chrono::milliseconds(sensor.data_interval));
     }
 }
 
 int main(int argc, char *argv[])
 {
-    std::string clientId = "sensor-monitor";
+    if (argc != 3)
+    {
+        cerr << "usage: " << argv[0] << " <initial_msg_interval_in_seconds> <msg_interval_in_milliseconds>" << endl;
+        return EXIT_FAILURE;
+    }
+    string clientId = "sensor-monitor";
     mqtt::client client(BROKER_ADDRESS, clientId);
     // Conecta-se ao broker MQTT.
     mqtt::connect_options connOpts;
@@ -132,28 +139,27 @@ int main(int argc, char *argv[])
     }
     catch (mqtt::exception &e)
     {
-        std::cerr << "Erro: " << e.what() << std::endl;
+        cerr << "error: " << e.what() << endl;
         return EXIT_FAILURE;
     }
-    std::clog << "Conectado ao broker" << std::endl;
+    clog << "connected to the broker" << endl;
     // Obtém o identificador único da máquina, neste caso, o nome do host.
     char hostname[1024];
     gethostname(hostname, 1024);
-    std::string machineId(hostname);
+    string machineId(hostname);
     // Define sensores e suas propriedades
-    std::vector<Sensor> sensors = {
-        {"used_memory", "float", 1000},
-        {"running_processes", "int", 1000},
+    vector<Sensor> sensors = {
+        {"used_memory", "int", atoi(argv[2])},
+        {"running_processes", "int", atoi(argv[2])},
     };
     // Cria uma thread para publicar mensagens periodicamente
-    std::thread publishThread(publishMessagesPeriodically, std::ref(machineId), std::ref(sensors), std::ref(client), 5);
+    thread publishThread(publishInitialMessagePeriodically, ref(machineId), ref(sensors), ref(client), atoi(argv[1]));
     // Cria threads para cada sensor
-    std::vector<std::thread> threads;
+    vector<thread> threads;
     for (const auto &sensor : sensors)
     {
-        threads.emplace_back(readAndPublishSensor, std::ref(machineId), sensor, std::ref(client));
+        threads.emplace_back(readAndPublishSensor, ref(machineId), sensor, ref(client));
     }
-    // Aguarda as threads terminarem (isso nunca deve acontecer neste exemplo)
     for (auto &thread : threads)
     {
         thread.join();
