@@ -22,11 +22,11 @@ struct Sensor
 {
     string sensor_id;
     string data_type;
-    long data_interval; // em milissegundos
+    long data_interval;
 };
 
 // Função para obter a RAM usada, em MB
-int getUsedRAM()
+int get_used_RAM()
 {
     struct sysinfo info;
     if (sysinfo(&info) != 0)
@@ -35,12 +35,12 @@ int getUsedRAM()
         return -1;
     }
     // Calcula a RAM usada (RAM total - RAM livre)
-    int usedRAMInMB = (info.totalram - info.freeram) / (1024 * 1024);
-    return usedRAMInMB;
+    int used_ram_in_mb = (info.totalram - info.freeram) / (1024 * 1024);
+    return used_ram_in_mb;
 }
 
 // Função para obter o número de processos em execução
-int getRunningProcesses()
+int get_running_processes()
 {
     struct sysinfo info;
     if (sysinfo(&info) != 0)
@@ -52,52 +52,52 @@ int getRunningProcesses()
 }
 
 // Função para publicar a mensagem inicial
-void publishInitialMessage(const string &machineId, const vector<Sensor> &sensors, mqtt::client &client)
+void publish_initial_message(const string &machine_id, const vector<Sensor> &sensors, mqtt::client &client)
 {
-    nlohmann::json initialMessage;
-    initialMessage["machine_id"] = machineId;
-    vector<nlohmann::json> sensorsJson;
+    nlohmann::json initial_message;
+    initial_message["machine_id"] = machine_id;
+    vector<nlohmann::json> sensors_json;
     for (const auto &sensor : sensors)
     {
-        nlohmann::json sensorJson;
-        sensorJson["sensor_id"] = sensor.sensor_id;
-        sensorJson["data_type"] = sensor.data_type;
-        sensorJson["data_interval"] = sensor.data_interval;
-        sensorsJson.push_back(sensorJson);
+        nlohmann::json sensor_json;
+        sensor_json["sensor_id"] = sensor.sensor_id;
+        sensor_json["data_type"] = sensor.data_type;
+        sensor_json["data_interval"] = sensor.data_interval;
+        sensors_json.push_back(sensor_json);
     }
-    initialMessage["sensors"] = sensorsJson;
-    mqtt::message msg(MONITOR_TOPIC, initialMessage.dump(), QOS, false);
+    initial_message["sensors"] = sensors_json;
+    mqtt::message msg(MONITOR_TOPIC, initial_message.dump(), QOS, false);
     client.publish(msg);
-    clog << "initial message published - topic: " << MONITOR_TOPIC << " - message: " << initialMessage.dump() << endl;
+    clog << "initial message published - topic: " << MONITOR_TOPIC << " - message: " << initial_message.dump() << endl << endl;
 }
 
 // Função para publicar mensagens periodicamente
-void publishInitialMessagePeriodically(const string &machineId, const vector<Sensor> &sensors, mqtt::client &client, int interval)
+void publish_initial_message_periodically(const string &machine_id, const vector<Sensor> &sensors, mqtt::client &client, int interval)
 {
     while (true)
     {
         // Publica a mensagem inicial
-        publishInitialMessage(machineId, sensors, client);
+        publish_initial_message(machine_id, sensors, client);
         // Dorme pelo intervalo especificado
         this_thread::sleep_for(chrono::seconds(interval));
     }
 }
 
 // Função para ler e publicar dados do sensor
-void readAndPublishSensor(const string &machineId, const Sensor &sensor, mqtt::client &client)
+void read_and_publish_sensor(const string &machine_id, const Sensor &sensor, mqtt::client &client)
 {
-    string topic = "/sensors/" + machineId + "/" + sensor.sensor_id;
+    string topic = "/sensors/" + machine_id + "/" + sensor.sensor_id;
     while (true)
     {
         int value;
         // Escolhe a função apropriada com base no tipo de sensor
         if (sensor.sensor_id == "used_memory")
         {
-            value = getUsedRAM();
+            value = get_used_RAM();
         }
         else if (sensor.sensor_id == "running_processes")
         {
-            value = getRunningProcesses();
+            value = get_running_processes();
         }
         else
         {
@@ -110,12 +110,12 @@ void readAndPublishSensor(const string &machineId, const Sensor &sensor, mqtt::c
         stringstream ss;
         ss << put_time(now_tm, "%FT%TZ");
         string timestamp = ss.str();
-        nlohmann::json sensorData;
-        sensorData["timestamp"] = timestamp;
-        sensorData["value"] = value;
-        mqtt::message msg(topic, sensorData.dump(), QOS, false);
+        nlohmann::json sensor_data;
+        sensor_data["timestamp"] = timestamp;
+        sensor_data["value"] = value;
+        mqtt::message msg(topic, sensor_data.dump(), QOS, false);
         client.publish(msg);
-        clog << "message published - topic: " << topic << " - message: " << sensorData.dump() << endl;
+        clog << "message published - topic: " << topic << " - message: " << sensor_data.dump() << endl << endl;
         this_thread::sleep_for(chrono::milliseconds(sensor.data_interval));
     }
 }
@@ -127,38 +127,38 @@ int main(int argc, char *argv[])
         cerr << "usage: " << argv[0] << " <initial_msg_interval_in_seconds> <msg_interval_in_milliseconds>" << endl;
         return EXIT_FAILURE;
     }
-    string clientId = "sensor-monitor";
-    mqtt::client client(BROKER_ADDRESS, clientId);
+    string client_id = "sensor-monitor";
+    mqtt::client client(BROKER_ADDRESS, client_id);
     // Conecta-se ao broker MQTT.
-    mqtt::connect_options connOpts;
-    connOpts.set_keep_alive_interval(20);
-    connOpts.set_clean_session(true);
+    mqtt::connect_options conn_opts;
+    conn_opts.set_keep_alive_interval(20);
+    conn_opts.set_clean_session(true);
     try
     {
-        client.connect(connOpts);
+        client.connect(conn_opts);
     }
     catch (mqtt::exception &e)
     {
         cerr << "error: " << e.what() << endl;
         return EXIT_FAILURE;
     }
-    clog << "connected to the broker" << endl;
+    clog << "connected to the broker" << endl << endl;
     // Obtém o identificador único da máquina, neste caso, o nome do host.
     char hostname[1024];
     gethostname(hostname, 1024);
-    string machineId(hostname);
+    string machine_id(hostname);
     // Define sensores e suas propriedades
     vector<Sensor> sensors = {
         {"used_memory", "int", atoi(argv[2])},
         {"running_processes", "int", atoi(argv[2])},
     };
     // Cria uma thread para publicar mensagens periodicamente
-    thread publishThread(publishInitialMessagePeriodically, ref(machineId), ref(sensors), ref(client), atoi(argv[1]));
+    thread publish_thread(publish_initial_message_periodically, ref(machine_id), ref(sensors), ref(client), atoi(argv[1]));
     // Cria threads para cada sensor
     vector<thread> threads;
     for (const auto &sensor : sensors)
     {
-        threads.emplace_back(readAndPublishSensor, ref(machineId), sensor, ref(client));
+        threads.emplace_back(read_and_publish_sensor, ref(machine_id), sensor, ref(client));
     }
     for (auto &thread : threads)
     {
