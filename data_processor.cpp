@@ -17,6 +17,7 @@ namespace asio = boost::asio;
 using namespace std;
 using asio::ip::tcp;
 
+// Função auxiliar para publicar a métrica no Graphite
 void publish_to_graphite(const string &metric)
 {
     try
@@ -34,6 +35,7 @@ void publish_to_graphite(const string &metric)
     }
 }
 
+// Função para converter timestamp em Unix
 string timestamp_to_unix(const string &timestamp)
 {
     tm t = {};
@@ -43,6 +45,7 @@ string timestamp_to_unix(const string &timestamp)
     return to_string(time_stamp);
 }
 
+// Função para criar e postar a métrica no Graphite
 void post_metric(const string &machine_id, const string &sensor_id, const string &timestamp_str, const int value)
 {
     try
@@ -63,7 +66,7 @@ void post_metric(const string &machine_id, const string &sensor_id, const string
         publish_to_graphite(graphite_metric);
         // Printa a métrica postada no Graphite
         string print_graphite_metric = metric_path + " " + to_string(value) + " " + timestamp_str;
-        cout << "posted: " << graphite_metric << endl;
+        cout << "posted: " << print_graphite_metric << endl << endl;
     }
     catch (const exception &e)
     {
