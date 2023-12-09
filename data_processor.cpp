@@ -145,7 +145,6 @@ void custom_processing(const string &machine_id, const string &sensor_id, int va
     time_t current_time = time(nullptr);
     // Calcula a média móvel dos últimos 5 valores
     double moving_average = calculate_moving_average(machine_id, sensor_id, value);
-    cout << "Moving Average = " << moving_average << endl;
     // Define um limite para acionar um alarme
     double threshold = 0.0;
     if (sensor_id == "used_memory") {
