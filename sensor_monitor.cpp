@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
     }
     string client_id = "sensor-monitor";
     mqtt::client client(BROKER_ADDRESS, client_id);
-    // Conecta-se ao broker MQTT.
+    // Conecta-se ao broker MQTT
     mqtt::connect_options conn_opts;
     conn_opts.set_keep_alive_interval(20);
     conn_opts.set_clean_session(true);
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
     clog << "connected to the broker" << endl << endl;
-    // Obtém o identificador único da máquina, neste caso, o nome do host.
+    // Obtém o identificador único da máquina, neste caso, o nome do host
     char hostname[1024];
     gethostname(hostname, 1024);
     string machine_id(hostname);
