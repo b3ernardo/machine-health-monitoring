@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <thread>
+#include <deque>
 #include <boost/asio.hpp>
 #include "json.hpp"
 #include "mqtt/client.h"
@@ -13,6 +14,8 @@
 #define GRAPHITE_HOST "127.0.0.1"
 #define GRAPHITE_PORT 2003
 #define TIME_FROM_SENSOR_MONITOR_IN_SECONDS 1 // Mudar conforme o valor passado ao sensor_monitor.cpp
+#define USED_MEMORY_THRESHOLD 7430.0
+#define RUNNING_PROCESSES_THRESHOLD 620.0
 
 namespace asio = boost::asio;
 using namespace std;
@@ -77,18 +80,6 @@ void post_metric(const string &machine_id, const string &sensor_id, const string
     }
 }
 
-vector<string> split(const string &str, char delim)
-{
-    vector<string> tokens;
-    string token;
-    istringstream token_stream(str);
-    while (getline(token_stream, token, delim))
-    {
-        tokens.push_back(token);
-    }
-    return tokens;
-}
-
 // Map para rastrear o último tempo de atividade de cada sensor
 map<pair<string, string>, chrono::steady_clock::time_point> last_sensor_activity;
 // Função para atualizar o tempo da última atividade para o tempo atual
@@ -108,7 +99,7 @@ double find_sensor_frequency()
     return elapsed_time.count() * 10 * TIME_FROM_SENSOR_MONITOR_IN_SECONDS;
 }
 
-void process_data()
+void inactivity_alarm_processing()
 {
     time_t current_time = time(nullptr);
     double frequency = find_sensor_frequency();
@@ -133,6 +124,57 @@ void process_data()
     }
 }
 
+// Map para armazenar as últimas leituras de cada sensor
+map<pair<string, string>, deque<int>> last_sensor_readings;
+// Função para calcular a média móvel dos últimos 5 valores
+double calculate_moving_average(const string &machine_id, const string &sensor_id, int new_value)
+{
+    // Mantém apenas os últimos 5 valores
+    auto &readings = last_sensor_readings[{machine_id, sensor_id}];
+    readings.push_back(new_value);
+    if (readings.size() > 5)
+        readings.pop_front();
+    // Calcula a média móvel
+    double sum = accumulate(readings.begin(), readings.end(), 0.0);
+    return sum / readings.size();
+}
+
+// Função para processamento personalizado
+void custom_processing(const string &machine_id, const string &sensor_id, int value)
+{
+    time_t current_time = time(nullptr);
+    // Calcula a média móvel dos últimos 5 valores
+    double moving_average = calculate_moving_average(machine_id, sensor_id, value);
+    cout << "Moving Average = " << moving_average << endl;
+    // Define um limite para acionar um alarme
+    double threshold = 0.0;
+    if (sensor_id == "used_memory") {
+        threshold = USED_MEMORY_THRESHOLD;
+    } else if (sensor_id == "running_processes") {
+        threshold = RUNNING_PROCESSES_THRESHOLD;
+    }
+    // Se a média móvel ultrapassar o limite, gera um alarme
+    if (moving_average > threshold)
+    {
+        string alarm_path = machine_id + ".alarms.high_moving_average." + sensor_id;
+        string message = alarm_path + " 1 " + unix_to_timestamp(time(nullptr)) + "\n";
+        publish_to_graphite(message);
+        post_metric(machine_id, "alarms.high_moving_average." + sensor_id, unix_to_timestamp(current_time), 1);
+    }
+}
+
+vector<string> split(const string &str, char delim)
+{
+    vector<string> tokens;
+    string token;
+    istringstream token_stream(str);
+    while (getline(token_stream, token, delim))
+    {
+        tokens.push_back(token);
+    }
+    return tokens;
+}
+
 class MQTTCallback : public virtual mqtt::callback
 {
 public:
@@ -148,6 +190,8 @@ public:
         post_metric(machine_id, sensor_id, timestamp, value);
         // Atualiza o tempo da última atividade ao receber um novo dado do sensor
         update_sensor_activity(machine_id, sensor_id);
+        // Processamento personalizado
+        custom_processing(machine_id, sensor_id, value);
     }
 };
 
@@ -174,7 +218,8 @@ int main(int argc, char *argv[])
     }
     while (true)
     {
-        process_data();
+        // Processamento do alarme de inatividade
+        inactivity_alarm_processing();
         this_thread::sleep_for(chrono::seconds(1));
     }
     return EXIT_SUCCESS;
