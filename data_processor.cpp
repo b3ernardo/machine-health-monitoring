@@ -12,6 +12,7 @@
 #define BROKER_ADDRESS "tcp://localhost:1883"
 #define GRAPHITE_HOST "127.0.0.1"
 #define GRAPHITE_PORT 2003
+#define TIME_FROM_SENSOR_MONITOR_IN_SECONDS 1 // Mudar conforme o valor passado ao sensor_monitor.cpp
 
 namespace asio = boost::asio;
 using namespace std;
@@ -104,7 +105,7 @@ double find_sensor_frequency()
     chrono::steady_clock::time_point end_time = chrono::steady_clock::now();
     chrono::duration<double> elapsed_time = end_time - start_time;
     start_time = end_time;
-    return elapsed_time.count() * 10;
+    return elapsed_time.count() * 10 * TIME_FROM_SENSOR_MONITOR_IN_SECONDS;
 }
 
 void process_data()
