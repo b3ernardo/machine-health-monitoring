@@ -54,9 +54,11 @@ int get_running_processes()
 // Função para publicar a mensagem inicial
 void publish_initial_message(const string &machine_id, const vector<Sensor> &sensors, mqtt::client &client)
 {
+    // Cria um objeto JSON para a mensagem inicial
     nlohmann::json initial_message;
     initial_message["machine_id"] = machine_id;
     vector<nlohmann::json> sensors_json;
+    // Para cada sensor, cria um objeto JSON com suas informações e adiciona ao vetor
     for (const auto &sensor : sensors)
     {
         nlohmann::json sensor_json;
@@ -65,10 +67,14 @@ void publish_initial_message(const string &machine_id, const vector<Sensor> &sen
         sensor_json["data_interval"] = sensor.data_interval;
         sensors_json.push_back(sensor_json);
     }
+    // Adiciona o vetor de sensores à mensagem JSON
     initial_message["sensors"] = sensors_json;
+    // Cria uma mensagem MQTT com a mensagem JSON e publica para o tópico de monitoramento
     mqtt::message msg(MONITOR_TOPIC, initial_message.dump(), QOS, false);
     client.publish(msg);
-    clog << "initial message published - topic: " << MONITOR_TOPIC << " - message: " << initial_message.dump() << endl << endl;
+    // Exibe informações no console
+    clog << "initial message published - topic: " << MONITOR_TOPIC << " - message: " << initial_message.dump() << endl
+         << endl;
 }
 
 // Função para publicar mensagens periodicamente
@@ -86,7 +92,9 @@ void publish_initial_message_periodically(const string &machine_id, const vector
 // Função para ler e publicar dados do sensor
 void read_and_publish_sensor(const string &machine_id, const Sensor &sensor, mqtt::client &client)
 {
+    // Monta o tópico MQTT para o sensor específico
     string topic = "/sensors/" + machine_id + "/" + sensor.sensor_id;
+
     while (true)
     {
         int value;
@@ -104,18 +112,24 @@ void read_and_publish_sensor(const string &machine_id, const Sensor &sensor, mqt
             cerr << "unknown sensor: " << sensor.sensor_id << endl;
             continue;
         }
+        // Obtém o timestamp atual no formato ISO 8601
         auto now = chrono::system_clock::now();
         time_t now_c = chrono::system_clock::to_time_t(now);
         tm *now_tm = localtime(&now_c);
         stringstream ss;
         ss << put_time(now_tm, "%FT%TZ");
         string timestamp = ss.str();
+        // Cria um objeto JSON com os dados do sensor
         nlohmann::json sensor_data;
         sensor_data["timestamp"] = timestamp;
         sensor_data["value"] = value;
+        // Cria e publica a mensagem MQTT para o tópico do sensor
         mqtt::message msg(topic, sensor_data.dump(), QOS, false);
         client.publish(msg);
-        clog << "message published - topic: " << topic << " - message: " << sensor_data.dump() << endl << endl;
+        // Exibe informações no console
+        clog << "message published - topic: " << topic << " - message: " << sensor_data.dump() << endl
+             << endl;
+        // Aguarda pelo intervalo definido para a leitura do sensor
         this_thread::sleep_for(chrono::milliseconds(sensor.data_interval));
     }
 }
@@ -142,7 +156,8 @@ int main(int argc, char *argv[])
         cerr << "error: " << e.what() << endl;
         return EXIT_FAILURE;
     }
-    clog << "connected to the broker" << endl << endl;
+    clog << "connected to the broker" << endl
+         << endl;
     // Obtém o identificador único da máquina, neste caso, o nome do host
     char hostname[1024];
     gethostname(hostname, 1024);
@@ -158,8 +173,10 @@ int main(int argc, char *argv[])
     vector<thread> threads;
     for (const auto &sensor : sensors)
     {
+        // Adiciona as threads ao vetor de threads
         threads.emplace_back(read_and_publish_sensor, ref(machine_id), sensor, ref(client));
     }
+    // Aguarda o término das threads
     for (auto &thread : threads)
     {
         thread.join();

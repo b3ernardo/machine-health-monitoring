@@ -21,7 +21,7 @@ namespace asio = boost::asio;
 using namespace std;
 using asio::ip::tcp;
 
-// Função para converter timestamp em Unix
+// Função para converter timestamp em Unix (Unix é o tempo atual em segundos desde 01/01/1970)
 string timestamp_to_unix(const string &timestamp)
 {
     tm t = {};
@@ -40,16 +40,20 @@ string unix_to_timestamp(const time_t &timestamp)
     return string(buffer);
 }
 
-// Função auxiliar para publicar a métrica no Graphite
+// Função para publicar a métrica no servidor Graphite
 void publish_to_graphite(const string &metric)
 {
     try
     {
+        // Cria um contexto de I/O para operações assíncronas
         asio::io_context io_context;
+        // Cria um socket TCP para comunicação com o servidor Graphite
         tcp::socket socket(io_context);
+        // Cria um resolvedor para converter o nome do host e a porta em um endpoint
         tcp::resolver resolver(io_context);
+        // Resolve o nome do host e a porta para obter um endpoint
         asio::connect(socket, resolver.resolve(GRAPHITE_HOST, to_string(GRAPHITE_PORT)));
-        // Envia a métrica ao servidor do Graphite
+        // Envia a métrica ao servidor Graphite
         asio::write(socket, asio::buffer(metric));
     }
     catch (const exception &e)
@@ -147,9 +151,12 @@ void custom_processing(const string &machine_id, const string &sensor_id, int va
     double moving_average = calculate_moving_average(machine_id, sensor_id, value);
     // Define um limite para acionar um alarme
     double threshold = 0.0;
-    if (sensor_id == "used_memory") {
+    if (sensor_id == "used_memory")
+    {
         threshold = USED_MEMORY_THRESHOLD;
-    } else if (sensor_id == "running_processes") {
+    }
+    else if (sensor_id == "running_processes")
+    {
         threshold = RUNNING_PROCESSES_THRESHOLD;
     }
     // Se a média móvel ultrapassar o limite, gera um alarme
@@ -174,11 +181,13 @@ vector<string> split(const string &str, char delim)
     return tokens;
 }
 
+// Classe de retorno de chamada MQTT
 class MQTTCallback : public virtual mqtt::callback
 {
 public:
     void message_arrived(mqtt::const_message_ptr msg) override
     {
+        // Parse da mensagem MQTT
         auto j = nlohmann::json::parse(msg->get_payload());
         string topic = msg->get_topic();
         auto topic_parts = split(topic, '/');
@@ -186,16 +195,16 @@ public:
         string sensor_id = topic_parts[3];
         string timestamp = j["timestamp"];
         int value = j["value"];
+        // Publica a métrica e realiza processamento personalizado
         post_metric(machine_id, sensor_id, timestamp, value);
-        // Atualiza o tempo da última atividade ao receber um novo dado do sensor
         update_sensor_activity(machine_id, sensor_id);
-        // Processamento personalizado
         custom_processing(machine_id, sensor_id, value);
     }
 };
 
 int main(int argc, char *argv[])
 {
+    // Configuração do cliente MQTT
     string client_id = "client_id";
     mqtt::async_client client(BROKER_ADDRESS, client_id);
     MQTTCallback cb;
@@ -205,6 +214,7 @@ int main(int argc, char *argv[])
     conn_opts.set_clean_session(true);
     try
     {
+        // Conexão ao broker MQTT e subscrição a tópicos
         client.connect(conn_opts)->wait();
         client.subscribe("/sensors/#", QOS);
         cout << "subscribed" << endl
